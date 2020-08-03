@@ -9,22 +9,409 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Inroduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This data set consists of Placement data of students in a XYZ campus. It includes secondary and higher secondary school percentage and specialization. It also includes degree specialization, type and Work experience and salary offers to the placed students
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The data set can be found [here](https://www.kaggle.com/benroshan/factors-affecting-campus-placement/data?select=Placement_Data_Full_Class.csv).
 
-```{r cars}
-summary(cars)
+```{r message=FALSE}
+#Initial Setup
+library(tidyverse)
+placement_data <- read.csv("campus_recruitment/Placement_Data_Full_Class.csv")
+summary(placement_data)
+
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+### Getting overview of columns
+```{r}
+glimpse(placement_data)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+So we can see there are ``r nrow(placement_data)`` rows and ``r ncol(placement_data)`` columns in this data set.
+
+```{r}
+#getting column names
+col_vector <- colnames(placement_data)
+print(col_vector)
+
+#getting column's data types
+for(col in col_vector){
+   print(str_c(col,": ", typeof(placement_data[[col]])))
+}
+```
+
+```{r}
+#Let's find unique values of categorical attributes
+
+for(col in col_vector){
+  if(typeof(placement_data[[col]]) == "character"){
+    unq_values <- placement_data %>% 
+      pull(col)  %>%
+      unique
+    n <- length(unq_values)
+    print(str_c( n," unique values for ", col, ":"))
+    print(unq_values)
+  }
+}
+```
+
+## Getting Insights
+
+- Let's analyze our data to find out, what factors lead to better placements
+
+### 1. On based of PG program
+
+Instead of looking at number of placements, it is better to see the how many percent of total students for a particular specialization got placed.
+```{r}
+
+#Checking total of students for a specific specialization
+placement_data %>%
+  group_by(specialisation)%>%
+  summarise(
+    total_students = n(),
+    .groups = "drop"
+  )
+#Checking total students placed for specific specialisation
+placement_data%>%
+  filter(
+    status == "Placed"
+  )%>%
+  group_by(specialisation)%>%
+  summarise(
+    total_students = n(),
+    .groups = "drop"
+  )
+```
+
+We can see , that number of students enrolled in 
+
+> Marketing & Finance are `120` , `95` - placed <br>
+> Marketing & Human Resoure are `95`, `53` - placed
+
+```{r message=FALSE}
+library(janitor)
+#storing results in a  named vector
+n_students <- c("Mkt&Fin"=120, "Mkt&HR"=95)
+n_students_placed <- c("Mkt&Fin"=95, "Mkt&HR"=53)
+total_students <- sum(n_students)
+total_students_placed <- nrow(
+  placement_data %>% filter(status=="Placed")
+)
+
+#getting insights based on specialization
+
+placement_data %>%
+    filter(
+    status == "Placed"
+  )%>%
+  group_by(specialisation) %>%
+  summarise(
+    total_placed = n(),
+    total_prop = n() / total_students,
+    total_prop_by_placed = total_placed/total_students_placed,
+    .groups = "drop"
+  )%>%
+  adorn_totals("row")
+```
+- We can see that nearly **69%**(``r total_students_placed``) of total students(``r total_students`` ) were placed, out of which students enrolled in Marketing and Finance were **44%(approx)** and students enrolled in Marketing and HR were **25%(approx)**
+
+- Also, out of total students placed,nearly **64%** are from Marketing & Finance and nearly **36%** are from Marketing & HR.
+
+- It gives a conclusion that more students are getting placed from *Marketing And Finance* specialization
+
+- Still it is not clear, what is the placement ratio of students in each specialization. Let's find that next
+
+
+
+```{r}
+#Getting proportion of placements for a particular specialization
+
+placement_data %>%
+   filter(
+    status == "Placed"
+  )%>%
+  group_by(specialisation)%>%
+  summarise(
+    total_placed = n(),
+    .groups="drop"
+  )%>%
+  mutate(
+    total_prop_by_spec = total_placed / case_when(
+      specialisation == "Mkt&Fin" ~ n_students[1],
+      specialisation == "Mkt&HR" ~ n_students[2]
+    ),
+  )
+
+```
+- It is evident that nearly **79%** of total students in *Marketing and Finance* are getting placed, while nearly **56%** of total students in *Marketing and Human Resource* are getting placed
+
+- We conclude that students enrolled in *Marketing and Finance* are more likely to get placed
+
+
+
+### 2. Based on Gender
+
+Let's see if there is any relation b/w `gender` and `status`.
+
+```{r}
+#getting proportion of placement based on gender
+
+placement_data %>%
+  filter(
+    status == "Placed"
+  )%>%
+  group_by(gender)%>%
+  summarise(
+    total = n(),
+    .groups = "drop"
+  )%>%
+  mutate(
+    total_prop = total/total_students_placed
+  )
+```
+
+- It is evident that **32%** of total students placed are female and **68%** of the are males.
+
+- Hence , we can say placement of males is more.
+
+Now, let's see their proportion based on specialization
+
+```{r}
+placement_data %>%
+  filter(
+    status == "Placed"
+  )%>%
+  group_by(specialisation, gender) %>%
+  summarise(
+    total_placed = n(),
+    .groups = "drop"
+  )%>%
+  mutate(
+    total_prop = total_placed / case_when(
+      specialisation == "Mkt&Fin" ~ n_students_placed[1],
+      specialisation == "Mkt&HR" ~ n_students_placed[2]
+    )
+  )
+  
+```
+- So, we can say that placement of males is more than females in both the specialization but it's slightly less in case of **Marketing and HR**
+
+
+### 3.Visualizing salary distribution
+
+```{r}
+options(scipen = 10000)
+placement_data %>% 
+  filter(status == "Placed")%>%
+  ggplot(
+    aes(x = salary)
+  ) +
+  labs(title = "Salary Distribution")+
+  xlab("Salary")+
+  ylab("Number of students")+
+  geom_histogram(bins = 30)+
+  theme(axis.text.x = element_text(face="bold", color="#993333", 
+                           size=7, angle=45)
+  )
+
+```
+
+- We can see that most of the salaries lie between `20K - 30K` range.
+
+```{r}
+#Checking salaries' distribution of males and females
+placement_data %>%
+  filter(
+    status=="Placed",
+  )%>%
+  ggplot(
+    aes(x=salary,
+        fill=gender)
+  )+
+  geom_histogram(bins=30, alpha=0.5, position = "identity",
+                 aes(y=..count../sum(..count..)))+
+  ylab("Total by proportion")
+
+
+```
+
+- Salaries for both male and female lie between `20K - 40k`
+
+```{r}
+#checking which specilisation has higher salary
+placement_data %>%
+  filter(
+    status=="Placed",
+  )%>%
+  group_by(
+    specialisation
+  )%>%
+  summarise(
+    avg_salary = mean(salary),
+    .groups = "drop"
+  )%>%
+  ggplot(
+    aes(x=specialisation,
+        y=avg_salary
+        )
+  )+
+  geom_bar(
+    stat="identity"
+  )
+
+```
+
+
+### 4.Salary Vs WorkExperience
+
+a. Salary Vs total placements
+
+```{r}
+#Finding prop by work exp
+placement_data %>%
+  filter(
+    status=="Placed"
+  )%>%
+  group_by(workex)%>%
+  summarise(
+    total_students = n(),
+    total_students_by_prop = total_students/total_students_placed,
+    .groups = "drop"
+  )%>%
+  adorn_totals("row")
+
+#Analysis salaries of students having no work exp
+summary(
+  placement_data %>%
+    filter(
+      status == "Placed",
+      workex == "No"
+    )%>%
+    select(
+      salary
+    )
+)
+#Analysis salaries of students having  work exp
+summary(
+  placement_data %>%
+    filter(
+      status == "Placed",
+      workex == "Yes"
+    )%>%
+    select(salary)
+)
+```
+
+- So, we can say that although the mean of students getting placed is more there's not much difference in salaries of students having work experience with those who are not.
+
+- Let's see the box plot to make things more clear
+
+```{r}
+placement_data_placed <- placement_data %>% filter(status=="Placed")
+create_box <- function( x, y){
+  ggplot(data= placement_data_placed,
+         aes_string(x=x,
+                    y=y
+                    )
+         )+
+    geom_boxplot()+
+    theme(panel.background = element_rect("orchid"))
+}
+
+create_box("workex","salary") +
+  xlab("Work Experience")
+```
+
+- We can see the `IQR` of both is almost similar, the reason for students with `workexp` having higher `avg salary` is due to some higher salaries of students having work experience.
+
+
+```{r}
+#Getting salary depending on Gender
+
+#male
+summary(
+placement_data_placed %>%
+  filter(gender=="M")%>%
+  select(salary)
+)
+
+#female
+summary(
+placement_data_placed %>%
+  filter(gender=="F")%>%
+  select(salary)
+)
+
+```
+
+- Seems like males are getting more salary with respect to females.Let's make our point clear by box plot.
+
+```{r}
+create_box("gender", "salary")
+```
+
+- There are many outliers in case of males but overall we can say males are getting more salary.
+
+
+### 5. HSC percentage VS Salary
+
+Let's end our analysis by finding relation between the hsc percentage and the salary.
+
+```{r}
+create_scatter <- function(x, y){
+  ggplot(data=placement_data_placed,
+         aes_string(
+           x=x,
+           y=y 
+         ))+
+    geom_point()+
+    theme(panel.background = element_rect(fill = "deepskyblue1"))
+}
+create_scatter("hsc_p", "salary")+
+  xlab("HSC percentage")
+```
+
+- Looking at the scatter plot, it is clear there is not relation between `hsc percentage` and `amount of salary`. 
+
+- let's see if there is any relation with MBA percentage and emp test.
+
+```{r}
+#salary vs mba per
+create_scatter("mba_p", "salary")+
+  xlab("MBA percentage")
+
+#salary vs etest per
+create_scatter("etest_p", "salary")+
+  xlab("Employability test percentage")
+```
+
+- So, it is evident *`Percentage doesn't matter`*.
+
+
+## Conclusion
+
+- We can say that Marketing and Finance is a famous field and have higher change of getting placed or getting higher salary.
+
+- The salary for males is generally higher.
+
+- Work Experience doesn't play a major role in getting placed or getting higher salary.
+
+- The percentage does not play any role in getting placed.
+
+> Limitations : There were only `r nrow(placement_data)` rows so it might not tell the whole story
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
